@@ -8,284 +8,9 @@
 #include <time.h>
 #include <string.h>
 #include <dirent.h>
-
-// structura fisier care contine toate info
-struct Fisier {
-    char numeFisier[128];
-    uint32_t dim;
-    u_int32_t inaltime;
-    u_int32_t latime;
-    uint32_t dimensiuneReferintaFisier;
-    uid_t uid;
-    mode_t mod;
-    __time_t ultimaModificare;
-    nlink_t nrLinkuri;
-};
-
-int verificareFisierBMP(char *numeFisier) {
-
-    struct stat informatiiFisier;
-    if(lstat(numeFisier, &informatiiFisier) == -1) return -1;
-    
-    //verific daca path-ul este un fisier normal si nu dir sau link
-    if(!S_ISREG(informatiiFisier.st_mode)) return 0;
-    
-    int fisierBMP = open(numeFisier, O_RDONLY);
-    if(fisierBMP == -1) return -1;
-    
-    //un fisier bmp are 2 biti 'b' si 'm'
-    char semnatura[2];
-    if(read(fisierBMP, semnatura, 2) != 2) {
-        close(fisierBMP);
-        return -1;
-    }
-
-    //daca contine bm returnam info fisier
-    if(semnatura[0] == 'B' && semnatura[1] == 'M') {
-        close(fisierBMP);
-        return 1;
-    }
-
-    close(fisierBMP);
-    return 0;
-}
-
-int verificareLink(char *numeFisier) {
-    struct stat informatiiFisier;
-    if(lstat(numeFisier, &informatiiFisier) == -1) return -1;
-    
-    if (S_ISLNK(informatiiFisier.st_mode)) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-int verificareDir(char *numeFisier) {
-    struct stat informatiiFisier;
-    if(lstat(numeFisier, &informatiiFisier) == -1) return -1;
-
-    if (S_ISDIR(informatiiFisier.st_mode)) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-//citire din fisier de la o anumita pozitie
-int citesteDinFisier(int fisier, void *buffer, int number_of_bytes, int cursor_position) {
-    if (lseek(fisier, cursor_position, SEEK_SET) == -1) return -1;
-    if (read(fisier, buffer, number_of_bytes) == -1) return -1;
-
-    return 1;
-}
-
-int scriereInformatiiBMP(int fisier, struct Fisier *fisierPrincipal) {
-
-    char buffer[512];
-    char permisiuniUser[4];
-    char permisiuniGrup[4];
-    char altePermisiuni[4];
-
-    //aici extragem user,grup si celelelate
-    mode_t mod = fisierPrincipal->mod;
-    sprintf(permisiuniUser, "%c%c%c",
-           (mod & S_IRUSR) ? 'r' : '-',
-           (mod & S_IWUSR) ? 'w' : '-',
-           (mod & S_IXUSR) ? 'x' : '-');
-
-    sprintf(permisiuniGrup, "%c%c%c",
-           (mod & S_IRGRP) ? 'r' : '-',
-           (mod & S_IWGRP) ? 'w' : '-',
-           (mod & S_IXGRP) ? 'x' : '-');
-
-    sprintf(altePermisiuni, "%c%c%c",
-           (mod & S_IROTH) ? 'r' : '-',
-           (mod & S_IWOTH) ? 'w' : '-',
-           (mod & S_IXOTH) ? 'x' : '-');
-
-    int lungimeFis = sprintf(buffer, 
-        "Nume fisier: %s\n"
-        "inaltime: %d\n"
-        "latime: %d\n"
-        "dim: %d bytes\n"
-        "UID: %u\n"
-        "ultima modif modified: %s"
-        "links: %lu\n"
-        "user: %s\n"
-        "group: %s\n"
-        "others %s\n\n",
-            fisierPrincipal->numeFisier, 
-            fisierPrincipal->inaltime, 
-            fisierPrincipal->latime, 
-            fisierPrincipal->dim, 
-            fisierPrincipal->uid,
-            ctime(&fisierPrincipal->ultimaModificare),
-            fisierPrincipal->nrLinkuri,
-            permisiuniUser,
-            permisiuniGrup,
-            altePermisiuni
-            );
-
-    if(write(fisier, buffer, lungimeFis) == -1) return -1;
-   
-    return 1;
-}
-
-int scriereInformatiiDirector(int fisier, struct Fisier *fisierPrincipal) {
-    char buffer[512];
-    char permisiuniUser[4];
-    char permisiuniGrup[4];
-    char altePermisiuni[4];
-
-    //extract the user, group and others rights from the file mod
-    mode_t mod = fisierPrincipal->mod;
-    sprintf(permisiuniUser, "%c%c%c",
-           (mod & S_IRUSR) ? 'r' : '-',
-           (mod & S_IWUSR) ? 'w' : '-',
-           (mod & S_IXUSR) ? 'x' : '-');
-
-    sprintf(permisiuniGrup, "%c%c%c",
-           (mod & S_IRGRP) ? 'r' : '-',
-           (mod & S_IWGRP) ? 'w' : '-',
-           (mod & S_IXGRP) ? 'x' : '-');
-
-    sprintf(altePermisiuni, "%c%c%c",
-           (mod & S_IROTH) ? 'r' : '-',
-           (mod & S_IWOTH) ? 'w' : '-',
-           (mod & S_IXOTH) ? 'x' : '-');
-
-    int lungimeFis = sprintf(buffer, 
-        "Fisier: %s\n"
-        "UID: %u\n"
-        "user: %s\n"
-        "group: %s\n"
-        "others %s\n\n",
-            fisierPrincipal->numeFisier, 
-            fisierPrincipal->uid,
-            permisiuniUser,
-            permisiuniGrup,
-            altePermisiuni
-            );
-
-    if(write(fisier, buffer, lungimeFis) == -1) return -1;
-   
-    return 1;
-}
-
-int scriereInformatiiLink(int fisier, struct Fisier *fisierPrincipal) {
-    char buffer[512];
-    char permisiuniUser[4];
-    char permisiuniGrup[4];
-    char altePermisiuni[4];
-
-    //extract the user, group and others rights from the file mod
-    mode_t mod = fisierPrincipal->mod;
-    sprintf(permisiuniUser, "%c%c%c",
-           (mod & S_IRUSR) ? 'r' : '-',
-           (mod & S_IWUSR) ? 'w' : '-',
-           (mod & S_IXUSR) ? 'x' : '-');
-
-    sprintf(permisiuniGrup, "%c%c%c",
-           (mod & S_IRGRP) ? 'r' : '-',
-           (mod & S_IWGRP) ? 'w' : '-',
-           (mod & S_IXGRP) ? 'x' : '-');
-
-    sprintf(altePermisiuni, "%c%c%c",
-           (mod & S_IROTH) ? 'r' : '-',
-           (mod & S_IWOTH) ? 'w' : '-',
-           (mod & S_IXOTH) ? 'x' : '-');
-
-    int lungimeFis = sprintf(buffer, 
-        "Link name: %s\n"
-        "Link dim: %d bytes\n"
-        "Target file dim: %d bytes\n"
-        "UID: %u\n"
-        "Rights for user: %s\n"
-        "Rights for group: %s\n"
-        "Rights for others %s\n\n",
-            fisierPrincipal->numeFisier, 
-            fisierPrincipal->dim,
-            fisierPrincipal->dimensiuneReferintaFisier, 
-            fisierPrincipal->uid,
-            permisiuniUser,
-            permisiuniGrup,
-            altePermisiuni
-            );
-
-    if(write(fisier, buffer, lungimeFis) == -1) return -1;
-   
-    return 1;
-}
-
-int citireInformatiiBMP(char *numeFisier, struct Fisier *fisierPrincipal) {
-
-    struct stat informatiiFisier;
-    int fisierBMP;
-
-    if(lstat(numeFisier, &informatiiFisier) == -1) return -1;
-    
-    fisierBMP = open(numeFisier, O_RDONLY);
-    if(fisierBMP == -1) return -1;
-    
-    
-    //setez numeFisier
-    strcpy(fisierPrincipal->numeFisier, numeFisier);
-
-    //latime
-    if(!citesteDinFisier(fisierBMP, &fisierPrincipal->latime , sizeof(fisierPrincipal->latime), 18)) {
-        close(fisierBMP);
-        return -1;
-    }
-
-    //inaltime
-    if(!citesteDinFisier(fisierBMP, &fisierPrincipal->inaltime, sizeof(fisierPrincipal->inaltime), 22)) {
-        close(fisierBMP);
-        return -1;
-    }
-
-    //dim
-    if(!citesteDinFisier(fisierBMP, &fisierPrincipal->dim, sizeof(fisierPrincipal->dim), 2)) {
-        close(fisierBMP);
-        return -1;
-    }
-
-    fisierPrincipal->nrLinkuri = informatiiFisier.st_nlink;
-    fisierPrincipal->uid = informatiiFisier.st_uid;
-    fisierPrincipal->ultimaModificare = informatiiFisier.st_mtime;
-    fisierPrincipal->mod = informatiiFisier.st_mode;
-
-    return 1;
-}
-
-int citireInformatiiDir(char *numeFisier, struct Fisier *fisierPrincipal) {
-
-    struct stat informatiiFisier;
-    if(lstat(numeFisier, &informatiiFisier) == -1) return -1;
-
-    strcpy(fisierPrincipal->numeFisier, numeFisier);
-    fisierPrincipal->uid = informatiiFisier.st_uid;
-    fisierPrincipal->mod = informatiiFisier.st_mode;
-    fisierPrincipal->dim = informatiiFisier.st_size;
-
-    return 1;
-}
-
-int citireInformatiiLink(char *numeFisier, struct Fisier *fisierPrincipal) {
-
-    struct stat informatiiFisier;
-    if(lstat(numeFisier, &informatiiFisier) == -1) return -1;
-
-    strcpy(fisierPrincipal->numeFisier, numeFisier);
-    fisierPrincipal->uid = informatiiFisier.st_uid;
-    fisierPrincipal->dim = informatiiFisier.st_size;
-    fisierPrincipal->mod = informatiiFisier.st_mode;
-
-    if(stat(numeFisier, &informatiiFisier) == -1) return -1;
-    fisierPrincipal->dimensiuneReferintaFisier = informatiiFisier.st_size;
-
-    return 1;
-}
+#include <sys/errno.h>
+#include <sys/wait.h>
+#include "librarie.h"
 
 int main(int argc, char **argv) {
     
@@ -293,65 +18,117 @@ int main(int argc, char **argv) {
     struct Fisier *fisierPrincipal = NULL;
     struct dirent *directorCurent = NULL;
     DIR *director = NULL;
+    int nrProcese = 0;
 
-    fisierPrincipal = malloc(sizeof(struct Fisier));
+    fisierPrincipal = malloc(sizeof(struct Fisier)); //alocare dinamica pt structura
     if(fisierPrincipal == NULL) {
-        printf("Error allocating space for file information");
+        printf("Eroare fisier");
         exit(-1);
     }
 
-    if(argc != 2) {   
-        printf("Usage ./program <input_folder>\n");
+    //vom avea 3 arg : nume program, fis input, fis output
+    if(argc != 3) {   
+        printf("Usage ./program <input_folder> <output_folder>\n");
         exit(-1);
     }
 
-    //verificare ca arg e fisier
-    if(!verificareDir(argv[1])) {
-        printf("Argument must be a folder");
+    //verificare ca arg[1] e dir
+    if(!esteDirector(argv[1])) {
+        printf("Argumentul trebuie sa fie director");
         exit(-1);
     }
 
-    //fis output
-    fisierOutput = open("statistica.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IWUSR | S_IRUSR  | S_IXUSR);
-    if(fisierOutput == -1) {
-        perror("Error creating output file");
-        exit(-2);
+    // verificare ca directorul exista, daca nu => il creez
+    struct stat directorOutput;
+    if (stat(argv[2], &directorOutput) == -1) {      //verific ca exista director
+        if (mkdir(argv[2], 0777) != 0) {             // il creez
+            perror("Eroare la creearea directorului");
+            exit(errno);
+        } 
     }
-    
-    //fis input
+
+    //deschidere dir
     director = opendir(argv[1]);
     if(director == NULL) {
-        perror("Error opening dir:");
+        perror("Error la citire dir:");
         exit(-2);
     }
 
-    //parcurgem dir
+    // iteram prin tot ce este in director
+    pid_t pid;
     directorCurent = readdir(director);
     do{
-        char numeFisier[128];
-        strcpy(numeFisier, argv[1]);
-        strcat(numeFisier, "/");
-        strcat(numeFisier, directorCurent->d_name);
+        // facem path-ul fisierului curent
+        char path[128];
+        strcpy(path, argv[1]);
+        strcat(path, "/");
+        strcat(path, directorCurent->d_name);
+        strcpy(fisierPrincipal->numeFisier, directorCurent->d_name);
 
+        //trecem peste directorul curent si cel parinte
         if(directorCurent->d_name[0] != '.') {
-            if(verificareFisierBMP(numeFisier) == 1) {
-                if((citireInformatiiBMP(numeFisier, fisierPrincipal)) == 1)
-                    scriereInformatiiBMP(fisierOutput, fisierPrincipal);
+
+            nrProcese++;
+            pid = fork();
+            //proces copil
+            if(pid == 0) {
+
+                // creez fisier output
+                char numeFisierOutput[128];
+                strcpy(numeFisierOutput, argv[2]);
+                strcat(numeFisierOutput, "/");
+                strcat(numeFisierOutput, directorCurent -> d_name);
+                strcat(numeFisierOutput, "_statistica.txt");
+                fisierOutput = open(numeFisierOutput, O_CREAT | O_WRONLY | O_TRUNC, S_IWUSR | S_IRUSR  | S_IXUSR);
+                if(fisierOutput == -1) {
+                    perror("Eroare la deschiderea fisierului output");
+                    exit(errno);
+                }
+
+                int liniiScrise = 0;
+                if(esteBMP(path) == 1) {
+                    if((citireInformatieBMP(path, fisierPrincipal)) == 1)
+                        liniiScrise = scriereInformatieBMP(fisierOutput, fisierPrincipal);
+                }
+                else if(esteFisierObisnuit(path) == 1) {
+                    if((citireFisierObisnuit(path, fisierPrincipal)) == 1){
+                        liniiScrise = scriereInformatieFisierObisnuit(fisierOutput, fisierPrincipal);
+                    }
+                }
+                else if(esteDirector(path) == 1){
+                    if((citireInformatieDirector(path, fisierPrincipal)) == 1)
+                        liniiScrise = scriereInformatieDirector(fisierOutput, fisierPrincipal);
+                }
+                else if(esteLink(path) == 1){
+                    if((citireInformatieLink(path, fisierPrincipal)) == 1)
+                        liniiScrise = scriereInformatieLink(fisierOutput, fisierPrincipal);
+                }
+                close(fisierOutput);
+                exit(liniiScrise);
             }
-            if(verificareDir(numeFisier) == 1){
-                if((citireInformatiiDir(numeFisier, fisierPrincipal)) == 1)
-                    scriereInformatiiDirector(fisierOutput, fisierPrincipal);
-            }
-            if(verificareLink(numeFisier) == 1){
-                if((citireInformatiiLink(numeFisier, fisierPrincipal)) == 1)
-                    scriereInformatiiLink(fisierOutput, fisierPrincipal);
+            
+            //daca e BMP => alt proces care sa schimbe poza in nuante de gri
+
+            if(esteBMP(path) == 1 && pid != 0) {
+                nrProcese++;
+                pid = fork();
+                //proces copil
+                if(pid == 0) exit(transformaBMPInGrayscale(path));
             }
         }
         directorCurent = readdir(director);
     } while(directorCurent != NULL);
 
     closedir(director);
-    close(fisierOutput);
 
+    //proces parinte
+    if(pid != 0) {
+        for(int i = 0; i < nrProcese; i++) {  //procesul parinte asteapta terminarea tuturor proceselor copil 
+            int status, procesCopil;
+            procesCopil = wait(&status);
+            if(WEXITSTATUS(status) > 1) printf("Procesul cu pid = %d s-a terminat cu codul: %d (linii scrise)\n", procesCopil, WEXITSTATUS(status));
+            else printf("Procesul cu pid = %d s-a terminat cu codul: %d\n", procesCopil, WEXITSTATUS(status));
+        }
+    }
     return 0;
 }
