@@ -31,5 +31,6 @@ int esteFisierObisnuit(char *numeFisier);
 int esteLink(char *numeFisier);
 int esteDirector(char *numeFisier);
 int transformaBMPInGrayscale(char *numeFisier);
+void scrieNumarLinii(char *path, int pipe);
 
 #endif

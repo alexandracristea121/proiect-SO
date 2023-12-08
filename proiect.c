@@ -18,7 +18,8 @@ int main(int argc, char **argv) {
     struct Fisier *fisierPrincipal = NULL;
     struct dirent *directorCurent = NULL;
     DIR *director = NULL;
-    int nrProcese = 0;
+    int desc[2];
+    int pipeFisier[2];
 
     fisierPrincipal = malloc(sizeof(struct Fisier)); //alocare dinamica pt structura
     if(fisierPrincipal == NULL) {
@@ -26,9 +27,9 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
-    //vom avea 3 arg : nume program, fis input, fis output
-    if(argc != 3) {   
-        printf("Usage ./program <input_folder> <output_folder>\n");
+    //vom avea 4 arg : nume program, fis input, fis output <c>
+    if(argc != 4) {   
+        printf("Usage ./program <input_folder> <output_folder> <c>\n");
         exit(-1);
     }
 
@@ -50,8 +51,14 @@ int main(int argc, char **argv) {
     //deschidere dir
     director = opendir(argv[1]);
     if(director == NULL) {
-        perror("Error la citire dir:");
+        perror("Eroare la citire dir:");
         exit(-2);
+    }
+    
+    //deschidere pipe
+    if(pipe(desc) == -1) {
+        perror("Creare pipe esuata");
+        exit(-1);
     }
 
     // iteram prin tot ce este in director
@@ -67,11 +74,19 @@ int main(int argc, char **argv) {
 
         //trecem peste directorul curent si cel parinte
         if(directorCurent->d_name[0] != '.') {
+            
+            //deschid pipe pt a trm catre copil continutul
+            if(pipe(pipeFisier) == -1) {
+                perror("Creare pipe esuata");
+                exit(-1);
+            } 
 
-            nrProcese++;
             pid = fork();
             //proces copil
             if(pid == 0) {
+                close(desc[0]); //inchid citire
+                close(desc[1]); //inchid scriere
+                close(pipeFisier[0]); 
 
                 // creez fisier output
                 char numeFisierOutput[128];
@@ -93,6 +108,8 @@ int main(int argc, char **argv) {
                 else if(esteFisierObisnuit(path) == 1) {
                     if((citireFisierObisnuit(path, fisierPrincipal)) == 1){
                         liniiScrise = scriereInformatieFisierObisnuit(fisierOutput, fisierPrincipal);
+                        scrieNumarLinii(path, pipeFisier[1]);
+                        close(pipeFisier[1]);
                     }
                 }
                 else if(esteDirector(path) == 1){
@@ -104,16 +121,41 @@ int main(int argc, char **argv) {
                         liniiScrise = scriereInformatieLink(fisierOutput, fisierPrincipal);
                 }
                 close(fisierOutput);
+                close(pipeFisier[1]); //inchid scriere
                 exit(liniiScrise);
             }
             
             //daca e BMP => alt proces care sa schimbe poza in nuante de gri
-
             if(esteBMP(path) == 1 && pid != 0) {
-                nrProcese++;
                 pid = fork();
                 //proces copil
-                if(pid == 0) exit(transformaBMPInGrayscale(path));
+                if(pid == 0) {
+                    close(desc[0]); //inchid citire
+                    close(desc[1]); //inchid scriere
+                    close(pipeFisier[0]); 
+                    close(pipeFisier[1]); 
+                    exit(transformaBMPInGrayscale(path));
+                }
+            }
+            
+            //daca nu e fisier bmp facem alt proces si verificam cate propozitii contin caracterul c
+            else if(esteFisierObisnuit(path) == 1 && pid != 0) {
+                pid = fork();
+                if(pid == 0) {
+                    close(pipeFisier[1]); //inchid scriere
+                    close(desc[0]);
+            
+                    dup2(pipeFisier[0], 0); // redirectare stdin la pipeFisier[0]
+                    dup2(desc[1], 1);   // redirectare stdout la desc[1]
+
+                    close(desc[1]); //inchid scriere
+                    close(pipeFisier[0]); //inchid citire
+                    execl("./script.sh", "./script.sh", argv[3], NULL);
+                
+                    close(desc[1]);
+                    close(pipeFisier[0]); //inchid citire
+                    exit(0);
+                }
             }
         }
         directorCurent = readdir(director);
@@ -122,13 +164,27 @@ int main(int argc, char **argv) {
     closedir(director);
 
     //proces parinte
+    close(desc[1]); //inchid scriere
+    int status, pid_copil;
     if(pid != 0) {
-        for(int i = 0; i < nrProcese; i++) {  //procesul parinte asteapta terminarea tuturor proceselor copil 
-            int status, procesCopil;
-            procesCopil = wait(&status);
-            if(WEXITSTATUS(status) > 1) printf("Procesul cu pid = %d s-a terminat cu codul: %d (linii scrise)\n", procesCopil, WEXITSTATUS(status));
-            else printf("Procesul cu pid = %d s-a terminat cu codul: %d\n", procesCopil, WEXITSTATUS(status));
+        while((pid_copil = wait(&status)) >= 0) {
+            if(WEXITSTATUS(status) > 1) printf("Procesul cu pid-ul = %d s-a terminat cu codul: %d\n", pid_copil, WEXITSTATUS(status));
+            else printf("Procesul cu pid-ul = %d s-a terminat cu exit code-ul: %d\n", pid_copil, WEXITSTATUS(status));
         }
+	}
+
+    
+    //citeste pipe-ul
+    char pipe[16];
+    char propozitiiCorecte = 0;
+    int sum = 0;
+    while((read(desc[0], &pipe, 4)) == 4) {  
+        propozitiiCorecte = atoi(pipe);
+        if(propozitiiCorecte >= 0) sum = sum + propozitiiCorecte;    
     }
+    
+    printf("%d propozitii corecte care contin caracterul: '%c'\n", sum, argv[3][0]);
+    close(desc[0]); //inchid citire
+    
     return 0;
 }

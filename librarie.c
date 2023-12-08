@@ -347,7 +347,7 @@ int transformaBMPInGrayscale(char *numeFisier) {
     u_int8_t pixelBuffer[dimensiuneBuffer];
 
     
-    int fisierBMP = open(numeFisier, O_RDWR);
+    int fisierBMP = open(numeFisier, O_RDWR); 
     if(fisierBMP == -1) return -1;
 
     //citesc data offset-ul
@@ -368,7 +368,7 @@ int transformaBMPInGrayscale(char *numeFisier) {
     while(bitiCititi > 0) {
         //mut cursorul la inceputul acestui grup de pixeli
         if (lseek(fisierBMP, -bitiCititi, SEEK_CUR) == -1) {
-            perror("Error:");
+            perror("Eroare:");
             close(fisierBMP);
             return -1;
         }
@@ -383,14 +383,42 @@ int transformaBMPInGrayscale(char *numeFisier) {
             pixelBuffer[i + 2] = gray_value;
         }
 
+        //pune pixelii modificati inapoi in imagine
         if(write(fisierBMP, pixelBuffer, bitiCititi) == -1) {
-            perror("Error:");
+            perror("Eroare:");
             close(fisierBMP);
             return -1;
         }
+        //citesc alti pixeli
         bitiCititi = read(fisierBMP, pixelBuffer, sizeof(pixelBuffer));
     }
 
     close(fisierBMP);
     return 1;
+}
+
+void scrieNumarLinii(char *path, int pipe) {    //nr linii din fisier intr-un pipe
+    int file_fd = open(path, O_RDONLY);
+    if (file_fd == -1) {
+        perror("Eroare la deschiderea fisierului");
+        return;
+    }
+
+    int bytes_read;
+    char buffer[32];
+
+    //citesc fisierul si scriu in pipe
+    while ((bytes_read = read(file_fd, buffer, sizeof(buffer))) > 0) {
+        if (write(pipe, buffer, bytes_read) == -1) {
+            perror("Eroare de scriere in pipe");
+            close(file_fd);
+            return;
+        }
+    }
+
+    if (bytes_read == -1) {
+        perror("Eroare de citire din fisier");
+    }
+
+    close(file_fd);
 }
