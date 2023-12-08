@@ -1,27 +1,20 @@
 #!/bin/bash
-# Verifica daca script-ul primeste un singur argument
-if [ "$#" -ne 1 ]; then
-    echo "Utilizare: $0 <c>"
+
+if [ "$#" -ne 1 ]
+then
+    echo "Mod de utilizare: $0 <caracter>"
     exit 1
 fi
- 
-# Caracterul primit ca argument
-character=$1
- 
-# Initializare contor
-counter=0
- 
-# Citeste linii pana la sfarsitul fisierului (CTRL+D)
+
+contor=0
 while IFS= read -r line; do
-    # Verifica daca linia incepe cu o litera mare
-    if [[ $line =~ ^[[:upper:]] ]]; then
-        # Verifica daca linia respecta conditiile date
-        if [[ $line =~ ^[[:upper:][:lower:][:digit:][:space:],.!?]+[.!?]$ && ! $line =~ ,\s*si ]]; 
+    if [[ $line =~ ^[A-Z] ]]; then
+        if [[ $line =~ $1 && $line =~ ^[A-Za-z0-9\ ,.!][.!?]$ && ! $line =~ ,\ .[.!?]$ ]]
         then
-            counter=$((counter + 1))
+            contor=$((contor+1))
         fi
     fi
 done
- 
-# Afiseaza rezultatul
-echo $counter
+
+echo $contor
+exit $contor
